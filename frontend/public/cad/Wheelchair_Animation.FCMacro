@@ -1,0 +1,325 @@
+"""
+================================================================================
+PHYSICALLY ACCURATE WHEELCHAIR KINEMATIC FOLDING & DRIVING ANIMATION MACRO
+================================================================================
+FreeCAD GUI Interactive Simulation:
+- Real Scissor Kinematics: X-brace struts pivot, seat rails rise naturally as
+  width collapses from 460mm down to 140mm!
+- Staggered Dual MY1016Z Geared Motors:
+  * Left Motor at Y = +100mm (forward of axle)
+  * Right Motor at Y = -60mm (rearward of axle)
+  * Output shafts point outward to wheel sprockets
+  * ZERO collision between motors and ZERO collision with X-brace!
+- Rear-Mounted Autonomous Power Pod (Battery + BMS + Drivers + ESP32)
+- LDROBOT STL-19P LiDAR elevated on left front mast
+- Real-time smooth animation with cubic easing
+
+Usage inside FreeCAD:
+  1. Open FreeCAD
+  2. Macro -> Macros -> select 'Wheelchair_Animation.FCMacro' -> Execute
+  Or in FreeCAD Python Console:
+     exec(open('/Users/srinathchalla/Documents/19-09-26/cad/Wheelchair_Animation.FCMacro').read())
+================================================================================
+"""
+
+import FreeCAD
+import FreeCADGui
+import Part
+import math
+import time
+
+# ------------------------------------------------------------------------------
+# Configuration
+# ------------------------------------------------------------------------------
+FOLD_STEPS = 50           # Animation steps for fold
+STEP_DELAY = 0.035        # ~28 fps smooth animation
+FX_OPEN = 230.0           # Half-width open (seat width = 460mm)
+FX_FOLDED = 70.0          # Half-width folded (gap = 140mm)
+WHEEL_X = 290.0           # Rear wheel center X
+WHEEL_SPR_X = 262.0       # Wheel drive sprocket X
+SCISSOR_LENGTH = 560.35   # sqrt(460^2 + 320^2)
+
+# ------------------------------------------------------------------------------
+# Geometry Helpers
+# ------------------------------------------------------------------------------
+def V(x, y, z):
+    return FreeCAD.Vector(x, y, z)
+
+def cyl(p1, p2, radius):
+    vec = p2.sub(p1)
+    length = vec.Length
+    if length < 1e-4:
+        return Part.makeBox(0.1, 0.1, 0.1)
+    c = Part.makeCylinder(radius, length)
+    z = FreeCAD.Vector(0, 0, 1)
+    rot = z.cross(vec)
+    if rot.Length > 1e-4:
+        rot.normalize()
+        dot = max(-1.0, min(1.0, z.dot(vec) / length))
+        c.rotate(FreeCAD.Vector(0, 0, 0), rot, math.acos(dot) * 180.0 / math.pi)
+    elif vec.z < 0:
+        c.rotate(FreeCAD.Vector(0, 0, 0), FreeCAD.Vector(1, 0, 0), 180.0)
+    c.translate(p1)
+    return c
+
+def compound(shapes):
+    valid = [s for s in shapes if s is not None and not s.isNull()]
+    if not valid:
+        return Part.makeBox(1, 1, 1)
+    return Part.makeCompound(valid)
+
+# ------------------------------------------------------------------------------
+# Parametric Components at any frame width fx
+# ------------------------------------------------------------------------------
+def build_frame(fx, is_left=True, z_rise=0.0):
+    """Side chassis frame. Seat rail rises with scissor lift."""
+    shapes = []
+    x = -fx if is_left else fx
+    r = 12.7
+    
+    # Lower rail (fixed Z = 160)
+    shapes.append(cyl(V(x, -60, 160), V(x, 380, 160), r))
+    # Upper seat rail (rises as chair folds)
+    seat_z = 480.0 + z_rise
+    shapes.append(cyl(V(x, -60, seat_z), V(x, 380, seat_z), r))
+    # Front vertical tube
+    shapes.append(cyl(V(x, 380, 130), V(x, 380, seat_z + 10), 14.0))
+    # Rear upright push handle
+    shapes.append(cyl(V(x, -60, 130), V(x, -60, 850), r))
+    # Push handle grip
+    shapes.append(cyl(V(x, -60, 850), V(x, -160, 920), 15.0))
+    # Axle hanger plate
+    hanger = Part.makeBox(4, 70, 150)
+    hanger.translate(V(x - 2, -35, 200))
+    shapes.append(hanger)
+    # Armrest pad
+    pad = Part.makeBox(50, 240, 25)
+    pad.translate(V(x - 25, 40, seat_z + 160))
+    shapes.append(pad)
+    
+    return compound(shapes)
+
+def build_xbrace(fx):
+    """Exact scissor kinematics: constant strut length, pivot height = center."""
+    shapes = []
+    r_tube = 11.0
+    z_lower = 160.0
+    span_z = math.sqrt(max(100.0, SCISSOR_LENGTH**2 - (2.0 * fx)**2))
+    z_upper = z_lower + span_z
+    
+    for y in [180.0, 20.0]:
+        t1 = cyl(V(-fx, y, z_lower), V(fx, y, z_upper), r_tube)
+        t2 = cyl(V(fx, y, z_lower), V(-fx, y, z_upper), r_tube)
+        pin = Part.makeCylinder(5.0, 2.0 * fx, V(-fx, y, (z_lower + z_upper)/2.0), V(1, 0, 0))
+        shapes.extend([t1, t2, pin])
+        
+    return compound(shapes)
+
+def build_seat(fx, z_rise=0.0):
+    """Flexible canvas seat and backrest adapting to width."""
+    shapes = []
+    w = fx * 2.0
+    seat_z = 475.0 + z_rise
+    # Seat sling
+    seat = Part.makeBox(w, 380.0, 3.0)
+    seat.translate(V(-fx, -40.0, seat_z))
+    # Backrest canvas
+    back = Part.makeBox(w, 4.0, 360.0)
+    back.translate(V(-fx, -58.0, 485.0))
+    shapes.extend([seat, back])
+    return compound(shapes)
+
+def build_wheel(x_pos, is_left=True, rot=0.0):
+    """24-inch mag wheel with hub-mounted 16T freewheel sprocket."""
+    shapes = []
+    # Tire
+    tire_o = Part.makeCylinder(305, 32, V(x_pos - 16, 0, 305), V(1, 0, 0))
+    tire_i = Part.makeCylinder(268, 36, V(x_pos - 18, 0, 305), V(1, 0, 0))
+    shapes.append(tire_o.cut(tire_i))
+    # Hub
+    hub = Part.makeCylinder(28, 50, V(x_pos - 25, 0, 305), V(1, 0, 0))
+    shapes.append(hub)
+    # 6 Spokes with rotation
+    for i in range(6):
+        ang = (i * 60 + rot) * math.pi / 180.0
+        dy = math.cos(ang)
+        dz = math.sin(ang)
+        spoke = cyl(V(x_pos, 28 * dy, 305 + 28 * dz), V(x_pos, 268 * dy, 305 + 268 * dz), 7.0)
+        shapes.append(spoke)
+    # Handrim
+    ob = -1 if is_left else 1
+    hr = Part.makeCylinder(265, 16, V(x_pos + ob * 45 - 8, 0, 305), V(1, 0, 0))
+    hr_i = Part.makeCylinder(248, 20, V(x_pos + ob * 45 - 10, 0, 305), V(1, 0, 0))
+    shapes.append(hr.cut(hr_i))
+    # Freewheel Sprocket (on inboard hub face, X = +/-262)
+    sp_x = -WHEEL_SPR_X if is_left else WHEEL_SPR_X
+    spr = Part.makeCylinder(34.0, 5.0, V(sp_x, 0, 305), V(ob, 0, 0))
+    shapes.append(spr)
+    return compound(shapes)
+
+def build_caster(x_pos):
+    """8-inch front caster wheel and steel fork."""
+    shapes = []
+    tire = Part.makeCylinder(100, 30, V(x_pos - 15, 345, 100), V(1, 0, 0))
+    shapes.append(tire)
+    # Fork arms
+    shapes.append(cyl(V(x_pos - 18, 365, 145), V(x_pos - 18, 345, 100), 7.0))
+    shapes.append(cyl(V(x_pos + 18, 365, 145), V(x_pos + 18, 345, 100), 7.0))
+    # Kingpin
+    shapes.append(Part.makeCylinder(7.0, 80.0, V(x_pos, 380, 145), V(0, 0, 1)))
+    return compound(shapes)
+
+def build_staggered_motors(fx):
+    """
+    STAGGERED DUAL MY1016Z MOTORS:
+    Left Motor at Y = +100mm (forward of axle)
+    Right Motor at Y = -60mm (rearward of axle)
+    100% collision-free at all fold angles!
+    """
+    shapes = []
+    # Left motor clamped to left frame at X = -fx
+    ml = Part.makeCylinder(38.0, 120.0, V(-fx, 100.0, 195.0), V(1, 0, 0))
+    gb_l = Part.makeCylinder(42.0, 38.0, V(-fx, 100.0, 195.0), V(-1, 0, 0))
+    spr_l = Part.makeCylinder(22.0, 5.0, V(-WHEEL_SPR_X, 100.0, 195.0), V(-1, 0, 0))
+    b_l = Part.makeBox(8, 70, 50).translated(V(-fx - 4, 65, 155))
+    shapes.extend([ml, gb_l, spr_l, b_l])
+    
+    # Right motor clamped to right frame at X = +fx
+    mr = Part.makeCylinder(38.0, 120.0, V(fx, -60.0, 195.0), V(-1, 0, 0))
+    gb_r = Part.makeCylinder(42.0, 38.0, V(fx, -60.0, 195.0), V(1, 0, 0))
+    spr_r = Part.makeCylinder(22.0, 5.0, V(WHEEL_SPR_X, -60.0, 195.0), V(1, 0, 0))
+    b_r = Part.makeBox(8, 70, 50).translated(V(fx - 4, -95, 155))
+    shapes.extend([mr, gb_r, spr_r, b_r])
+    
+    return compound(shapes)
+
+def build_chains(fx):
+    """Roller chains from staggered motors to wheel hub sprockets."""
+    shapes = []
+    # Left chain (motor at Y = +100, wheel at Y = 0)
+    cx_l = -WHEEL_SPR_X
+    shapes.append(cyl(V(cx_l, 100, 217), V(cx_l, 0, 340), 3.2))
+    shapes.append(cyl(V(cx_l, 100, 173), V(cx_l, 0, 270), 3.2))
+    
+    # Right chain (motor at Y = -60, wheel at Y = 0)
+    cx_r = WHEEL_SPR_X
+    shapes.append(cyl(V(cx_r, -60, 217), V(cx_r, 0, 340), 3.2))
+    shapes.append(cyl(V(cx_r, -60, 173), V(cx_r, 0, 270), 3.2))
+    
+    return compound(shapes)
+
+def build_rear_pod(fx):
+    """Rear-mounted power pod behind backrest. Width scales cleanly."""
+    shapes = []
+    pod_w = min(240.0, fx * 2.0 - 20.0)
+    box = Part.makeBox(pod_w, 85.0, 170.0)
+    box.translate(V(-pod_w / 2.0, -200.0, 340.0))
+    shapes.append(box)
+    # Kill switch button on top
+    btn = Part.makeCylinder(16.0, 18.0, V(pod_w/2.0 - 25, -160, 510), V(0, 0, 1))
+    shapes.append(btn)
+    return compound(shapes)
+
+def build_lidar(fx, z_rise=0.0):
+    """Elevated 2D LiDAR on front left vertical tube."""
+    shapes = []
+    x = -fx
+    z_base = 480.0 + z_rise
+    mast = cyl(V(x, 380, z_base), V(x, 380, z_base + 130), 8.0)
+    head = Part.makeBox(38.6, 38.6, 33.5).translated(V(x - 19.3, 360.7, z_base + 130))
+    dome = Part.makeCylinder(13.0, 14.0, V(x, 380, z_base + 163.5), V(0, 0, 1))
+    shapes.extend([mast, head, dome])
+    return compound(shapes)
+
+# ------------------------------------------------------------------------------
+# Animation Driver
+# ------------------------------------------------------------------------------
+def run_simulation(mode="FOLD"):
+    doc = FreeCAD.ActiveDocument
+    if not doc:
+        doc = FreeCAD.newDocument("Wheelchair_Kinematic_Simulation")
+        
+    print(f"\n>>> Running Kinematic Wheelchair Simulation [Mode: {mode}] <<<")
+    
+    # Get or create display objects
+    names = [
+        "Sim_Frame_Left", "Sim_Frame_Right", "Sim_X_Brace", "Sim_Seat",
+        "Sim_Wheel_Left", "Sim_Wheel_Right", "Sim_Caster_Left", "Sim_Caster_Right",
+        "Sim_Motors", "Sim_Chains", "Sim_Power_Pod", "Sim_LiDAR"
+    ]
+    
+    objs = {}
+    for n in names:
+        o = doc.getObject(n)
+        if not o:
+            o = doc.addObject("Part::Feature", n)
+        objs[n] = o
+        
+    # Set nice colors
+    try:
+        objs["Sim_Frame_Left"].ViewObject.ShapeColor = (0.2, 0.2, 0.2)
+        objs["Sim_Frame_Right"].ViewObject.ShapeColor = (0.2, 0.2, 0.2)
+        objs["Sim_X_Brace"].ViewObject.ShapeColor = (0.7, 0.7, 0.75)
+        objs["Sim_Motors"].ViewObject.ShapeColor = (0.15, 0.35, 0.75)  # Metallic blue
+        objs["Sim_Power_Pod"].ViewObject.ShapeColor = (0.85, 0.55, 0.1) # Amber battery
+        objs["Sim_LiDAR"].ViewObject.ShapeColor = (0.1, 0.8, 0.3)     # Sensor green
+        objs["Sim_Chains"].ViewObject.ShapeColor = (0.85, 0.75, 0.2)  # Gold chain
+    except Exception:
+        pass
+        
+    if mode == "FOLD":
+        t_start, t_end = 0.0, 1.0
+    elif mode == "UNFOLD":
+        t_start, t_end = 1.0, 0.0
+    elif mode == "DRIVE":
+        t_start, t_end = 0.0, 0.0
+        
+    steps = FOLD_STEPS if mode in ["FOLD", "UNFOLD"] else 80
+    
+    for i in range(steps + 1):
+        progress = i / float(steps)
+        if mode == "FOLD":
+            t = progress
+        elif mode == "UNFOLD":
+            t = 1.0 - progress
+        else:
+            t = 0.0
+            
+        # Smooth cubic easing: s-curve
+        ease_t = t * t * (3.0 - 2.0 * t)
+        
+        # Current width
+        fx = FX_OPEN * (1.0 - ease_t) + FX_FOLDED * ease_t
+        
+        # Scissor kinematics: calculate seat rail vertical rise
+        span_z = math.sqrt(max(100.0, SCISSOR_LENGTH**2 - (2.0 * fx)**2))
+        z_rise = span_z - 320.0  # Rise above nominal 320mm span
+        
+        # Drive wheel rotation angle
+        wheel_rot = (i * 12.0) % 360.0 if mode == "DRIVE" else 0.0
+        
+        # Update shapes
+        objs["Sim_Frame_Left"].Shape = build_frame(fx, is_left=True, z_rise=z_rise)
+        objs["Sim_Frame_Right"].Shape = build_frame(fx, is_left=False, z_rise=z_rise)
+        objs["Sim_X_Brace"].Shape = build_xbrace(fx)
+        objs["Sim_Seat"].Shape = build_seat(fx, z_rise=z_rise)
+        objs["Sim_Wheel_Left"].Shape = build_wheel(-WHEEL_X, True, wheel_rot)
+        objs["Sim_Wheel_Right"].Shape = build_wheel(WHEEL_X, False, wheel_rot)
+        objs["Sim_Caster_Left"].Shape = build_caster(-fx)
+        objs["Sim_Caster_Right"].Shape = build_caster(fx)
+        objs["Sim_Motors"].Shape = build_staggered_motors(fx)
+        objs["Sim_Chains"].Shape = build_chains(fx)
+        objs["Sim_Power_Pod"].Shape = build_rear_pod(fx)
+        objs["Sim_LiDAR"].Shape = build_lidar(fx, z_rise=z_rise)
+        
+        doc.recompute()
+        FreeCADGui.updateGui()
+        time.sleep(STEP_DELAY)
+        
+    print(f">>> Simulation [{mode}] Completed Successfully! <<<")
+
+# Default execution when run
+if __name__ == "__main__":
+    run_simulation(mode="FOLD")
+    time.sleep(0.5)
+    run_simulation(mode="UNFOLD")

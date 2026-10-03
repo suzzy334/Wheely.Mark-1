@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Healthshine Wheelchair 3D Precision Model | GTA 6 Physics Simulation</title>
+  <meta name="description" content="Ultra-detailed 3D model and real-time rigid-body differential physics simulation of the Flipkart Healthshine wheelchair with 24-inch 6-spoke mag wheels, fixed 16T hub sprockets, 8-inch front casters with kingpin trail swivel, folding frame, and scissor parking brakes on a GTA 6 cyber grid.">
+  <link rel="stylesheet" href="./src/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦽</text></svg>">
+</head>
+<body>
+  <!-- 3D WebGL Canvas Viewport -->
+  <div id="canvas-container"></div>
+
+  <!-- Minimalist Top Navigation HUD -->
+  <header class="top-hud glass-panel">
+    <div class="hud-brand">
+      <div class="brand-badge">HEALTHSHINE</div>
+      <div class="brand-title">PRECISION <span>3D SHOWCASE</span></div>
+    </div>
+
+    <!-- Camera Focus Presets -->
+    <div class="camera-pill-group">
+      <button id="cam-showcase-btn" class="cam-pill active" title="Showcase 3/4 Hero View">
+        <span>🎯</span> Showcase
+      </button>
+      <button id="cam-sprocket-btn" class="cam-pill" title="Ultra Close-Up on 16T Bronze Hub Sprocket">
+        <span>⚙️</span> 16T Sprocket
+      </button>
+      <button id="cam-seat-btn" class="cam-pill" title="Kinematic Seat Rods, Saddles & Lift Strap">
+        <span>🪑</span> Seat Rods
+      </button>
+      <button id="cam-auto-btn" class="cam-pill" title="Autonomous Drive Motors & Chains">
+        <span>🤖</span> Autonomous Kit
+      </button>
+      <button id="cam-battery-btn" class="cam-pill" title="Autonomous Electronics Deck: 24V Battery, Daly BMS, Dual BTS7960 Drivers, ESP32-S3 & Fuses">
+        <span>⚡</span> Autonomous Electronics
+      </button>
+      <button id="cam-lidar-btn" class="cam-pill" title="Elevated 2D LiDAR & IMU Sensor">
+        <span>📡</span> LiDAR & IMU
+      </button>
+      <button id="cam-wheel-btn" class="cam-pill" title="Side Profile of 24-inch Mag Wheel & Tire Tread">
+        <span>🛞</span> 24" Mag Wheel
+      </button>
+      <button id="cam-caster-btn" class="cam-pill" title="Close-Up on 8-inch Front Caster & Swivel Headset">
+        <span>🛴</span> 8" Caster
+      </button>
+      <button id="cam-top-btn" class="cam-pill" title="Top-Down Aerial View">
+        <span>📐</span> Top Aerial
+      </button>
+    </div>
+
+    <!-- Showcase Actions & Finish Selector -->
+    <div class="hud-actions">
+      <!-- Finish Selector -->
+      <div class="finish-selector" title="Switch Frame Finish">
+        <button id="finish-black-btn" class="finish-btn active" data-finish="black">Satin Black</button>
+        <button id="finish-chrome-btn" class="finish-btn" data-finish="chrome">Chrome</button>
+        <button id="finish-gunmetal-btn" class="finish-btn" data-finish="gunmetal">Gunmetal</button>
+      </div>
+
+      <!-- FreeCAD CAD Download Modal Trigger -->
+      <button id="cad-modal-btn" class="action-btn cad-highlight" title="Open FreeCAD CAD & STEP Files">
+        <span>📐</span> FreeCAD CAD
+      </button>
+
+      <!-- Pod Orientation Switcher (Horizontal Sub-Chassis vs Vertical Upright) -->
+      <button id="pod-orient-btn" class="action-btn orient-highlight" title="Toggle Electronics Enclosures: Horizontal (Sub-Chassis Rail) vs Vertical (Frame Uprights)">
+        <span id="pod-orient-icon">📏</span> <span id="pod-orient-label">Mount: Horizontal</span>
+      </button>
+
+      <!-- Turntable Auto-Rotate Button -->
+      <button id="turntable-btn" class="action-btn" title="Toggle Auto-Rotate Turntable">
+        <span id="turntable-icon">🔄</span> Turntable
+      </button>
+
+      <!-- Zoom In / Out / Reset -->
+      <div class="zoom-controls">
+        <button id="zoom-in-btn" class="icon-btn" title="Zoom In (Down to 15cm)">➕</button>
+        <button id="zoom-out-btn" class="icon-btn" title="Zoom Out">➖</button>
+        <button id="zoom-reset-btn" class="icon-btn" title="Reset View">⟲</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Real-Time Physics Telemetry & Driving HUD (Top Right) -->
+  <aside id="physics-hud" class="physics-panel glass-panel">
+    <div class="physics-header">
+      <div class="physics-status">
+        <span class="pulse-indicator"></span>
+        <span>PHYSICS ENGINE ACTIVE</span>
+      </div>
+      <div id="drive-motion-badge" class="motion-badge idle">IDLE</div>
+    </div>
+
+    <!-- Speedometer Dial & Digital Readout -->
+    <div class="speedometer-container">
+      <div class="speed-readout">
+        <span id="speedometer-val" class="speed-number">0.0</span>
+        <span class="speed-unit">km/h</span>
+      </div>
+      <div class="speed-bar-track">
+        <div id="speedometer-bar" class="speed-bar-fill" style="width: 0%;"></div>
+      </div>
+    </div>
+
+    <!-- Wheel Telemetry Grid -->
+    <div class="telemetry-grid">
+      <div class="telemetry-item">
+        <span class="item-label">24" Left Wheel</span>
+        <span id="rpm-left-val" class="item-value">0 RPM</span>
+      </div>
+      <div class="telemetry-item">
+        <span class="item-label">24" Right Wheel</span>
+        <span id="rpm-right-val" class="item-value">0 RPM</span>
+      </div>
+      <div class="telemetry-item">
+        <span class="item-label">8" Front Casters</span>
+        <span id="rpm-caster-val" class="item-value">0 RPM</span>
+      </div>
+      <div class="telemetry-item">
+        <span class="item-label">Distance Run</span>
+        <span id="distance-val" class="item-value">0.0 m</span>
+      </div>
+    </div>
+
+    <!-- Camera Driving Mode Switcher -->
+    <div class="camera-mode-selector">
+      <span class="section-label">Camera Perspective:</span>
+      <div class="cam-mode-buttons">
+        <button id="cam-mode-orbit" class="mode-pill active" title="Free Orbit View (Follows position, rotates freely)">
+          <span>🛰️</span> Orbit
+        </button>
+        <button id="cam-mode-chase" class="mode-pill" title="GTA 6 Dynamic 3rd-Person Chase Cam">
+          <span>🏎️</span> Follow
+        </button>
+        <button id="cam-mode-driver" class="mode-pill" title="First-Person Passenger Rider View">
+          <span>👀</span> Rider POV
+        </button>
+      </div>
+    </div>
+
+    <!-- Parking Brakes & Reset Controls -->
+    <div class="physics-action-row">
+      <button id="brake-toggle-btn" class="brake-btn" title="Toggle BTS7960 Dynamic Regenerative Electronic Brake (Spacebar)">
+        <span>🔓</span> Dynamic Brake FREE
+      </button>
+      <button id="reset-pos-btn" class="reset-btn" title="Reset Wheelchair to Grid Origin (Key R)">
+        <span>↺</span> Reset [R]
+      </button>
+    </div>
+  </aside>
+
+  <!-- Virtual Driving Touch/Click D-Pad (Bottom Right) -->
+  <div id="virtual-dpad" class="dpad-container glass-panel">
+    <div class="dpad-row">
+      <button id="dpad-up" class="dpad-btn" title="Drive Forward (W / Up Arrow)">▲</button>
+    </div>
+    <div class="dpad-row middle">
+      <button id="dpad-left" class="dpad-btn" title="Steer Left (A / Left Arrow)">◀</button>
+      <button id="dpad-brake" class="dpad-btn brake" title="Dynamic Electronic Brake (Spacebar)">⚡</button>
+      <button id="dpad-right" class="dpad-btn" title="Steer Right (D / Right Arrow)">▶</button>
+    </div>
+    <div class="dpad-row">
+      <button id="dpad-down" class="dpad-btn" title="Drive Reverse (S / Down Arrow)">▼</button>
+    </div>
+  </div>
+
+  <!-- Bottom Floating Folding Controller (Healthshine 66cm to 25.5cm) -->
+  <div class="bottom-folding-pill glass-panel">
+    <div class="folding-header">
+      <div class="folding-title">
+        <span>↔️</span>
+        <span>Kinematic Scissor Fold</span>
+      </div>
+      <div id="folding-width-badge" class="folding-badge">66 cm (Open) • Frame: 460 mm</div>
+      <button id="auto-fold-btn" class="fold-cycle-btn" title="Animate Seat Rod Lift & Scissor Fold">
+        <span>▶</span> Lift & Fold
+      </button>
+    </div>
+    <div class="folding-slider-row">
+      <span class="dim-label">Open (66cm / 460mm seat)</span>
+      <input type="range" id="folding-slider" min="0" max="1" step="0.005" value="0">
+      <span class="dim-label">Folded (25.5cm / 140mm gap)</span>
+    </div>
+  </div>
+
+  <!-- Bottom-Left Minimalist Interaction Guide -->
+  <div class="interaction-hint glass-panel">
+    <span class="hint-dot"></span>
+    <span id="hint-text">Drive: [W, A, S, D] or Arrows • Dynamic Brake: [Space] • Reset: [R] • Orbit: Left Click Drag</span>
+  </div>
+
+  <!-- FreeCAD CAD Modal & Model Access -->
+  <div id="cad-modal" class="modal-backdrop hidden">
+    <div class="modal-card glass-panel">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <span class="modal-badge">FREECAD 1.1 & ISO STEP</span>
+          <h2 class="modal-heading">Autonomous Wheelchair CAD Access</h2>
+        </div>
+        <button id="cad-modal-close" class="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">
+          Collision-free parametric FreeCAD assemblies (<code>.FCStd</code>), universal ISO STEP models (<code>.step</code>), kinematic folding macros, and verified clearance reports.
+        </p>
+
+        <div class="cad-command-box">
+          <span class="cmd-label">Open in FreeCAD App (macOS):</span>
+          <div class="cmd-input-row">
+            <input type="text" readonly value="open -a FreeCAD cad/Wheelchair_Open_Full_Assembly.FCStd" id="cad-cli-input">
+            <button id="copy-cad-cmd-btn" class="copy-btn">Copy</button>
+          </div>
+        </div>
+
+        <div class="cad-downloads-grid">
+          <div class="cad-card master-card">
+            <div class="card-icon">🦽</div>
+            <div class="card-info">
+              <h3>Open Full Assembly (.FCStd)</h3>
+              <p>Native FreeCAD 1.1 with complete robotics conversion (460mm open)</p>
+            </div>
+            <a href="/cad/Wheelchair_Open_Full_Assembly.FCStd" download class="download-pill primary">Download (93 KB)</a>
+          </div>
+
+          <div class="cad-card master-card">
+            <div class="card-icon">📁</div>
+            <div class="card-info">
+              <h3>Folded Full Assembly (.FCStd)</h3>
+              <p>Native FreeCAD 1.1 folded state (140mm width, 0.0000 mm³ collision)</p>
+            </div>
+            <a href="/cad/Wheelchair_Folded_Assembly.FCStd" download class="download-pill primary">Download (56 KB)</a>
+          </div>
+
+          <div class="cad-card master-card">
+            <div class="card-icon">📐</div>
+            <div class="card-info">
+              <h3>Open Assembly STEP (.step)</h3>
+              <p>Universal multi-body ISO STEP for SolidWorks, Fusion 360, FreeCAD</p>
+            </div>
+            <a href="/cad/Wheelchair_Open_Full_Assembly.step" download class="download-pill primary">Download (765 KB)</a>
+          </div>
+
+          <div class="cad-card master-card">
+            <div class="card-icon">📦</div>
+            <div class="card-info">
+              <h3>Folded Assembly STEP (.step)</h3>
+              <p>Universal ISO STEP folded state for mechanical clearance validation</p>
+            </div>
+            <a href="/cad/Wheelchair_Folded_Assembly.step" download class="download-pill">Download (452 KB)</a>
+          </div>
+
+          <div class="cad-card master-card">
+            <div class="card-icon">🎬</div>
+            <div class="card-info">
+              <h3>FreeCAD Kinematics Macro (.FCMacro)</h3>
+              <p>Interactive real-time folding animation with exact scissor trigonometry</p>
+            </div>
+            <a href="/cad/Wheelchair_Animation.FCMacro" download class="download-pill">Download Macro (12 KB)</a>
+          </div>
+
+          <div class="cad-card master-card">
+            <div class="card-icon">🛡️</div>
+            <div class="card-info">
+              <h3>Kinematic Clearance Verifier (.py)</h3>
+              <p>BRep solid intersection tests (40 pairs tested, 0.0000 mm³ overlap)</p>
+            </div>
+            <a href="/cad/verify_kinematic_clearance.py" download class="download-pill">Download Python (3.6 KB)</a>
+          </div>
+        </div>
+
+        <div class="modular-cad-section">
+          <h4 class="sub-heading">Modular Robotics & Chassis Components (ISO STEP):</h4>
+          <div class="modular-links-grid">
+            <a href="/cad/exports_step/MY1016Z_Motor_Left_Staggered.step" download class="modular-link">⚡ MY1016Z Left Motor Staggered (.step)</a>
+            <a href="/cad/exports_step/MY1016Z_Motor_Right_Staggered.step" download class="modular-link">⚡ MY1016Z Right Motor Staggered (.step)</a>
+            <a href="/cad/exports_step/Drive_Chain_Left.step" download class="modular-link">⛓️ Drive Chain Left (.step)</a>
+            <a href="/cad/exports_step/Drive_Chain_Right.step" download class="modular-link">⛓️ Drive Chain Right (.step)</a>
+            <a href="/cad/exports_step/Rear_Autonomous_Power_Pod.step" download class="modular-link">🔋 Rear Autonomous Power Pod (.step)</a>
+            <a href="/cad/exports_step/LDROBOT_STL19P_LiDAR_Mast.step" download class="modular-link">📡 LDROBOT STL-19P LiDAR Mast (.step)</a>
+            <a href="/cad/exports_step/MPU6050_IMU_Sensor.step" download class="modular-link">🧭 MPU6050 6-DOF IMU (.step)</a>
+            <a href="/cad/exports_step/16T_Drive_Sprocket.step" download class="modular-link">⚙️ 16T Hub Sprocket (.step)</a>
+            <a href="/cad/exports_step/24in_Composite_Mag_Wheel.step" download class="modular-link">🛞 24" Mag Wheel (.step)</a>
+            <a href="/cad/exports_step/Front_Caster_Assembly.step" download class="modular-link">🛴 8" Front Caster (.step)</a>
+            <a href="/cad/exports_step/Chassis_Side_Frame.step" download class="modular-link">🏗️ Chassis Side Frame (.step)</a>
+            <a href="/cad/exports_step/Double_X_Cross_Brace.step" download class="modular-link">❌ Double-X Folding Brace (.step)</a>
+            <a href="/cad/exports_step/Scissor_Parking_Brake.step" download class="modular-link">🛑 Scissor Parking Brake (.step)</a>
+            <a href="/cad/exports_step/Swing_Away_Footrest.step" download class="modular-link">🦶 Swing-Away Footrest (.step)</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main JavaScript Bundle -->
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
